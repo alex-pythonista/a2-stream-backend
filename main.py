@@ -1,61 +1,83 @@
-from fastapi import FastAPI, File, Depends, UploadFile
-from fastapi.responses import FileResponse
-import os
+from fastapi import FastAPI, File, UploadFile, HTTPException
+import boto3
+# from botocore.exceptions import SignatureDoesNotMatch
+import mimetypes
 import uuid
-import subprocess
-from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
+load_dotenv()
+import os
 
-
-UPLOAD_DIR = 'uploads'
-PROCESSED_DIR = 'processed_hls'
-
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR)
-
-if not os.path.exists(PROCESSED_DIR):
-    os.makedirs(UPLOAD_DIR)
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+REGION = os.getenv("REGION")
 
 app = FastAPI()
-app.mount("/processd_hls", StaticFiles(directory="processed_hls"), name="processed_hls")
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Initialize the S3 client
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=REGION
+)
 
-@app.post('/video-upload/')
-async def video_upload(file: UploadFile = File(...)):
-    inputpath = UPLOAD_DIR + '/' + str(file.filename)
-    lessonId = uuid.uuid4()
-    outputpath = f'{PROCESSED_DIR}/course/{lessonId}'
-    hlspath = f'{outputpath}/index.m3u8'
+# Define allowed video MIME types
+ALLOWED_VIDEO_TYPES = ["video/mp4", "video/mpeg", "video/ogg", "video/webm", "video/quicktime"]
 
-    os.makedirs(outputpath, exist_ok=True)
-    with open(inputpath, 'wb') as buffer:
-        buffer.write(file.file.read())
+@app.post("/upload-video/")
+async def upload_video(file: UploadFile = File(...)):
+    # Check the file type
+    file_type, _ = mimetypes.guess_type(file.filename)
 
-    ffmpeg_cmd = [
-        'ffmpeg',
-        '-i', inputpath,
-        '-c:v', 'libx264',
-        '-c:a', 'aac',
-        '-hls_time', '10',
-        '-hls_playlist_type', 'vod',
-        '-hls_segment_filename', f'{outputpath}/%03d.ts',
-        '-start_number', '0',
-        hlspath
-    ]
-    subprocess.run(ffmpeg_cmd, check=True)
+    if file_type not in ALLOWED_VIDEO_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid file type. Only video files are allowed.")
     
-    return {
-        'message': 'Video uploaded and converted successfully!',
-        'lesson_id': lessonId
-    }
-
-@app.get("/stream/{lesson_id}")
-async def get_hls_playlist(lesson_id: str):
-    # Construct the path to the index.m3u8 file based on lesson_id
-    hlspath = f'{PROCESSED_DIR}/course/{lesson_id}/index.m3u8'
+    # Upload the file to S3
+    bucket_name = "temp-videos-vidmox-test"
+    s3_key = f"unprocessed-videos/{uuid.uuid4()}.{file.filename.split('.')[-1]}"
     
-    # Check if the file exists and serve it
-    if os.path.exists(hlspath):
-        return FileResponse(hlspath, media_type="application/vnd.apple.mpegurl")
-    else:
-        return {"error": "File not found"}
+    try:
+        multipart_upload = s3_client.create_multipart_upload(Bucket=bucket_name, Key=s3_key)
+        upload_id = multipart_upload['UploadId']
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+    
+    try:
+        chunk_size = 50 * 1024 * 1024  # 50 MB
+
+        parts = []
+        part_number = 1
+
+        while True:
+            # Read chunk from file
+            chunk = await file.read(chunk_size)
+            if not chunk:
+                break
+            
+            # Upload chunk to S3
+            part = s3_client.upload_part(
+                Bucket=bucket_name,
+                Key=s3_key,
+                PartNumber=part_number,
+                UploadId=upload_id,
+                Body=chunk
+            )
+            parts.append({'PartNumber': part_number, 'ETag': part['ETag']})
+            part_number += 1
+
+        # Complete multipart upload
+        s3_client.complete_multipart_upload(
+            Bucket=bucket_name,
+            Key=s3_key,
+            UploadId=upload_id,
+            MultipartUpload={'Parts': parts}
+        )
+
+        file_url = f"https://{bucket_name}.s3.amazonaws.com/{s3_key}"
+        return {"url": file_url}
+    
+    except Exception as e:
+    #     # Abort multipart upload if an error occurs
+        s3_client.abort_multipart_upload(Bucket=bucket_name, Key=s3_key, UploadId=upload_id)
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
