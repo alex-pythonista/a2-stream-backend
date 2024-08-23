@@ -1,0 +1,38 @@
+{
+    "Records": [
+        {
+            "eventVersion": "2.1",
+            "eventSource": "aws:s3",
+            "awsRegion": "ap-south-1",
+            "eventTime": "2024-08-22T07:52:09.326Z",
+            "eventName": "ObjectCreated:CompleteMultipartUpload",
+            "userIdentity": {
+                "principalId": "AWS:AIDA52GTLIWIQVC2ZLPGX"
+            },
+            "requestParameters": {
+                "sourceIPAddress": "202.65.173.17"
+            },
+            "responseElements": {
+                "x-amz-request-id": "W7496CNB98GR3Z20",
+                "x-amz-id-2": "B1LI2bWhwvPPeMBfOkvPCNxjCyUnitgfmXs9LgOLnMoTx8x12JtOFxPKGFFrVseV0TfBZ6UQLxuQPQVPhGM42KD1NuNylfXO"
+            },
+            "s3": {
+                "s3SchemaVersion": "1.0",
+                "configurationId": "sqs-trigger-test",
+                "bucket": {
+                    "name": "temp-videos-vidmox-test",
+                    "ownerIdentity": {
+                        "principalId": "A1A27MVK3DR22T"
+                    },
+                    "arn": "arn:aws:s3:::temp-videos-vidmox-test"
+                },
+                "object": {
+                    "key": "e419ad68-39b0-49e9-9ae5-ebd2a082c1e3.mov",
+                    "size": 43903295,
+                    "eTag": "da91b964a48615a9ba9e7c36cd25891c-1",
+                    "sequencer": "0066C6EE23615F9D78"
+                }
+            }
+        }
+    ]
+}

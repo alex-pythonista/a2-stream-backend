@@ -34,7 +34,7 @@ async def upload_video(file: UploadFile = File(...)):
     
     # Upload the file to S3
     bucket_name = "temp-videos-vidmox-test"
-    s3_key = f"unprocessed-videos/{uuid.uuid4()}.{file.filename.split('.')[-1]}"
+    s3_key = f"{uuid.uuid4()}.{file.filename.split('.')[-1]}"
     
     try:
         multipart_upload = s3_client.create_multipart_upload(Bucket=bucket_name, Key=s3_key)
