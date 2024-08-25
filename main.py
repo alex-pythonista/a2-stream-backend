@@ -33,7 +33,7 @@ async def upload_video(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Invalid file type. Only video files are allowed.")
     
     # Upload the file to S3
-    bucket_name = "temp-videos-vidmox-test"
+    bucket_name = os.environ.get("BUCKET_NAME")
     s3_key = f"{uuid.uuid4()}.{file.filename.split('.')[-1]}"
     
     try:
@@ -57,7 +57,7 @@ async def upload_video(file: UploadFile = File(...)):
             
             # Upload chunk to S3
             part = s3_client.upload_part(
-                Bucket=bucket_name,
+                Bucket=bucket_name, 
                 Key=s3_key,
                 PartNumber=part_number,
                 UploadId=upload_id,
